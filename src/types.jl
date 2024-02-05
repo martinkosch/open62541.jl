@@ -65,7 +65,7 @@ function UA_Array_new(v::AbstractArray{T},
         type_ptr::Ptr{UA_DataType} = ua_data_type_ptr_default(T)) where {T}
     v_typed = convert(Vector{juliadatatype(type_ptr)}, vec(v)) # Implicit check if T can be converted to type_ptr
     arr_ptr = convert(Ptr{T}, UA_Array_new(length(v), type_ptr))
-    GC.@preserve v_typed unsafe_copyto!(arr_ptr, pointer(v_typed), length(v))
+    GC.@preserve v_typed arr_ptr unsafe_copyto!(arr_ptr, pointer(v_typed), length(v))
     return UA_Array(arr_ptr, length(v))
 end
 
@@ -77,18 +77,14 @@ function UA_Array_new(length::Integer, juliatype::DataType)
     return UA_Array(arr_ptr, length)
 end
 
-function UA_print(p::Ref{T},
+function UA_print(p::T,
         type_ptr::Ptr{UA_DataType} = ua_data_type_ptr_default(T)) where {T}
     buf = UA_String_new()
-    UA_print(p, type_ptr, buf)
+    UA_print(wrap_ref(p), type_ptr, buf)
     s = unsafe_string(buf)
     UA_String_clear(buf)
     UA_String_delete(buf)
     return s
-end
-
-function UA_print(v::T, type_ptr = ua_data_type_ptr_default(T)) where {T}
-    UA_print(Ref(v), type_ptr)
 end
 
 for (i, type_name) in enumerate(type_names)
@@ -105,11 +101,24 @@ for (i, type_name) in enumerate(type_names)
         end
 
         # Datatype specific constructors, destructors, initalizers, as well as clear and copy functions
+        """
+        ```
+        $($(type_name))_new"()::Ptr{$($(type_name))}
+        ```
+        creates and initializes a `$($(type_name))` object whose memory is allocated by C. After use, it needs to be 
+        cleaned up with `$($(type_name))_delete(x::Ptr{$($(type_name))})`
+        """
         function $(Symbol(type_name, "_new"))()
             data_type_ptr = UA_TYPES_PTRS[$(type_ind_name)]
             return convert(Ptr{$(type_name)}, UA_new(data_type_ptr))
         end
 
+        """
+        ```
+        $($(type_name))_init"(x::Ptr{$($(type_name))})
+        ```
+        initializes the object `x`. This is synonymous with zeroing out the allocated memory. 
+        """
         $(Symbol(type_name, "_init"))(p::Ptr{$(type_name)}) = UA_init(p)
 
         function $(Symbol(type_name, "_copy"))(src::Ref{$(type_name)},
@@ -118,23 +127,58 @@ for (i, type_name) in enumerate(type_names)
             return UA_copy(src, dst, data_type_ptr)
         end
 
+        """
+        ```
+        $($(type_name))_copy"(src::Ptr{$($(type_name))}, dst::Ptr{$($(type_name))})::UA_STATUSCODE
+        $($(type_name))_copy"(src::$($(type_name)), dst::Ptr{$($(type_name))})::UA_STATUSCODE
+        ```
+        Copy the content of the source object `src` to the destination object `dst`. Returns `UA_STATUSCODE_GOOD` or `UA_STATUSCODE_BADOUTOFMEMORY`.
+        """
         function $(Symbol(type_name, "_copy"))(src::$(type_name),
                 dst::Ptr{$(type_name)})
             return $(Symbol(type_name, "_copy"))(Ref(src), dst)
         end
 
+        """
+        ```
+        $($(type_name))_clear"(x::Ptr{$($(type_name))})
+        ```
+        deletes the dynamically allocated content of the object `x` and calls `$($(type_name))_init(x)` to reset the type and its memory. 
+        """
         function $(Symbol(type_name, "_clear"))(p::Ptr{$(type_name)})
             data_type_ptr = UA_TYPES_PTRS[$(type_ind_name)]
             UA_clear(p, data_type_ptr)
         end
 
+        """
+        ```
+        $($(type_name))_delete(x::Ptr{$($(type_name))})
+        ```
+        deletes the content of object `x` and its memory. 
+        """
         function $(Symbol(type_name, "_delete"))(p::Ptr{$(type_name)})
             data_type_ptr = UA_TYPES_PTRS[$(type_ind_name)]
             UA_delete(p, data_type_ptr)
         end
 
+        """
+        ```
+        $($(type_name))_deleteMembers(x::Ptr{$($(type_name))})
+        ```
+        (deprecated, use `$($(type_name))_clear(x)` instead)
+        deletes the dynamically allocated content of the object `x` and calls `$($(type_name))_init(x)` to reset the type and its memory.
+        """
+        function $(Symbol(type_name, "_deleteMembers"))(p::Ptr{$(type_name)})
+            oldname = $(Symbol(type_name, "_deleteMembers"))
+            newname = $(Symbol(type_name, "_clear"))
+            Base.depwarn("$oldname is deprecated; use $newname instead",
+                :test,
+                force = true)
+            $(Symbol(type_name, "_clear"))(p::Ptr{$(type_name)})
+        end
+
         function $(Symbol(type_name, "_Array_new"))(length::Integer)
-            # TODO: Allow empty arrays with corresponsing UA_EMPTY_ARRAY_SENTINEL indicator
+            # TODO: Allow empty arrays with corresponding UA_EMPTY_ARRAY_SENTINEL indicator
             length <= 0 &&
                 throw(DomainError(length, "Length of new array must be larger than zero."))
             data_type_ptr = UA_TYPES_PTRS[$(type_ind_name)]
@@ -180,202 +224,507 @@ for (i, type_name) in enumerate(type_names)
     end
 end
 
+Base.convert(::Type{UA_String}, x::Ptr{UA_String}) = unsafe_load(x)
+Base.convert(::Type{UA_QualifiedName}, x::Ptr{UA_QualifiedName}) = unsafe_load(x)
+Base.convert(::Type{UA_LocalizedText}, x::Ptr{UA_LocalizedText}) = unsafe_load(x)
+Base.convert(::Type{UA_NodeId}, x::Ptr{UA_NodeId}) = unsafe_load(x)
+Base.convert(::Type{UA_ExpandedNodeId}, x::Ptr{UA_ExpandedNodeId}) = unsafe_load(x)
+Base.convert(::Type{UA_Guid}, x::Ptr{UA_Guid}) = unsafe_load(x)
+
 ## StatusCode
 function UA_StatusCode_name_print(sc::Integer)
     return unsafe_string(UA_StatusCode_name(UA_StatusCode(sc)))
 end
 
+function UA_StatusCode_isBad(sc)
+    return (sc >> 30) >= 0x02
+end
+
+function UA_StatusCode_isUncertain(sc)
+    return (sc >> 30) == 0x01
+end
+
+function UA_StatusCode_isGood(sc)
+    return (sc >> 30) == 0x00
+end
+
 ## String
-# String `s` is copied to newly allocated memory that needs to be freed. Returns a pointer to a new `UA_String`.
-function UA_String_set_alloc(data::AbstractString, ua_str::Ptr{UA_String})
-    s = UA_String_fromChars(data)
-    ua_str.data = s.data
-    ua_str.length = s.length
-    return ua_str
-end
+"""
+```
+UA_STRING_ALLOC(s::AbstractString)::Ptr{UA_String}
+```
 
-# String `s` must be kept valid using GC.@preserve as long as the return value is used. It is recommended to use UA_STRING_ALLOC with a subsequent call to UA_String_delete.
-function UA_STRING_unsafe(s::AbstractString)
+creates a `UA_String` object from `s`. Memory is allocated by C and needs to be cleaned up with UA_String_delete(x::Ptr{UA_String})
+"""
+function UA_STRING_ALLOC(s::AbstractString)
+    dst = UA_String_new()
     GC.@preserve s begin
-        isempty(s) && return UA_String(0, C_NULL)
-        return UA_String(length(s), pointer(s))
+        if isempty(s)
+            src = UA_String(0, C_NULL)
+        else
+            src = UA_String(length(s), pointer(s))
+        end
+        UA_String_copy(src, dst)
     end
+    return dst
 end
 
-# String `s` is copied to newly allocated memory. The result's field `data` needs to be freed. Returns a `UA_String` struct.
-UA_STRING_ALLOC(s::AbstractString) = UA_String_fromChars(s)
+"""
+```
+UA_STRING(s::AbstractString)::Ptr{UA_String}
+```
 
-UA_String_delete(s::UA_String) = UA_Byte_delete(s.data)
+creates a `UA_String` object from `s`. Memory is allocated by C and needs to be cleaned up with UA_String_delete(x::Ptr{UA_String})
+"""
+function UA_STRING(s::AbstractString)
+    return UA_STRING_ALLOC(s)
+end
 
+#TODO: think whether this can be cleaned up further
 Base.unsafe_string(s::UA_String) = unsafe_string(s.data, s.length)
 Base.unsafe_string(s::Ref{UA_String}) = unsafe_string(s[])
 Base.unsafe_string(s::Ptr{UA_String}) = unsafe_string(unsafe_load(s))
 
-UA_String_equal(s1::UA_String, s2::Ref{UA_String}) = UA_String_equal(Ref(s1), s2)
-UA_String_equal(s1::Ref{UA_String}, s2::UA_String) = UA_String_equal(s1, Ref(s2))
-UA_String_equal(s1::UA_String, s2::UA_String) = UA_String_equal(Ref(s1), Ref(s2))
+## UA_BYTESTRING
+"""
+```
+UA_BYTESTRING_ALLOC(s::AbstractString)::Ptr{UA_String}
+```
+
+creates a `UA_ByteString` object from `s`. Memory is allocated by C and needs to be cleaned up with UA_ByteString_delete(x::Ptr{UA_ByteString})
+"""
+function UA_BYTESTRING_ALLOC(s::AbstractString)
+    return UA_STRING_ALLOC(s)
+end
+
+"""
+```
+UA_BYTESTRING(s::AbstractString)::Ptr{UA_String}
+```
+
+creates a `UA_ByteString` object from `s`. Memory is allocated by C and needs to be cleaned up with UA_ByteString_delete(x::Ptr{UA_ByteString})
+"""
+function UA_BYTESTRING(s::AbstractString)
+    return UA_BYTESTRING_ALLOC(s)
+end
+
+"""
+```
+UA_ByteString_equal(s1::Ptr{UA_ByteString}, s2::Ptr{UA_ByteString})::Bool
+```
+
+returns `true` if `s1` and `s2` have identical content.
+"""
+function UA_ByteString_equal(s1, s2)
+    return UA_String_equal(s1, s2)
+end
 
 ## DateTime
+#NOTE: Return type of this function in open62541 is UA_Int64, but a UA_DateTime is encoded as a 64-bit 
+#      signed integer which represents the number of 100 nanosecond intervals since January 1, 1601 (UTC)
+#      (start of day, i.e., midnight). Therefore, the calculation implemented by open62541 can result in
+#      non-Integer values. These get truncated to fit with the return type. The open62541 implementation
+#      is faithfully reproduced here with the original name. If loss of precision is to be avoided, use
+#      the UA_DateTime_toUnixTime_precise functions. 
+
 function UA_DateTime_toUnixTime(date::UA_DateTime)
+    return trunc(Int, (date - UA_DATETIME_UNIX_EPOCH) / UA_DATETIME_SEC)
+end
+
+function UA_DateTime_toUnixTime_precise(date::UA_DateTime)
     return (date - UA_DATETIME_UNIX_EPOCH) / UA_DATETIME_SEC
 end
 
 function UA_DateTime_fromUnixTime(unixDate::Integer)
-    return UA_DateTime(unixDate * UA_DATETIME_SEC) + UA_DATETIME_UNIX_EPOCH
+    return unixDate * UA_DATETIME_SEC + UA_DATETIME_UNIX_EPOCH
 end
 
-datetime2ua_datetime(dt::DateTime) = UA_DateTime_fromUnixTime(round(Int, datetime2unix(dt)))
-ua_datetime2datetime(dt::UA_DateTime) = unix2datetime(UA_DateTime_toUnixTime(dt))
-
 ## Guid
-# XXX - UA_GUID("test") --> BadInternalError
 function UA_GUID(s::AbstractString)
-    guid = Ref{UA_Guid}()
-    ua_s = UA_STRING_unsafe(s)
-    retval = GC.@preserve s UA_Guid_parse(guid, ua_s)
+    ua_s = UA_STRING(s)
+    guid = UA_GUID(ua_s)
+    UA_String_delete(ua_s)
+    return guid
+end
+
+function UA_GUID(s::Ptr{UA_String})
+    guid = UA_Guid_new()
+    retval = UA_Guid_parse(guid, s)
     retval != UA_STATUSCODE_GOOD &&
         error("Parsing of Guid \"$(s)\" failed with statuscode \"$(UA_StatusCode_name_print(retval))\".")
-    return guid[]
+    return guid
 end
 
 ## NodeId
-#numeric
-function UA_NodeId_new(nsIndex::Integer, identifier::Integer)
-    nodeid = UA_NodeId_new()
-    nodeid.namespaceIndex = UA_UInt16(nsIndex)
-    nodeid.identifierType = UA_NODEIDTYPE_NUMERIC
+"""
+```
+UA_NODEID(s::AbstractString)::Ptr{UA_NodeId}
+UA_NODEID(s::Ptr{UA_String})::Ptr{UA_NodeId}
+```
 
-    identifier_tuple = open62541.anonymous_struct_tuple(UInt32(identifier),
-        typeof(unsafe_load(nodeid.identifier)))
-    nodeid.identifier = identifier_tuple
+creates a `UA_NodeId` object by parsing `s` (which can be a string or UA_String).
+
+Example:
+
+```
+UA_NODEID("ns=1;i=1234") #generates UA_NodeId with numeric identifier
+UA_NODEID("ns=1;s=test") #generates UA_NodeId with string identifier
+```
+"""
+function UA_NODEID(s::AbstractString)
+    ua_s = UA_STRING(s)
+    id = UA_NODEID(ua_s)
+    UA_String_delete(ua_s)
+    return id
+end
+function UA_NODEID(s::Ptr{UA_String})
+    id = UA_NodeId_new()
+    retval = UA_NodeId_parse(id, s)
+    retval != UA_STATUSCODE_GOOD &&
+        error("Parsing of NodeId \"$(s)\" failed with statuscode \"$(UA_StatusCode_name_print(retval))\".")
+    return id
+end
+
+"""
+```
+UA_NODEID_NUMERIC(nsIndex::Integer, identifier::Integer)::Ptr{UA_NodeId}
+```
+
+creates a `UA_NodeId` object with namespace index `nsIndex` and numerical identifier `identifier`.
+Memory is allocated by C and needs to be cleaned up using `UA_NodeId_delete(x::Ptr{UA_NodeId})` after the object is not used anymore.
+"""
+function UA_NODEID_NUMERIC(nsIndex::Integer, identifier::Integer)
+    nodeid = UA_NodeId_new()
+    nodeid.namespaceIndex = nsIndex
+    nodeid.identifierType = UA_NODEIDTYPE_NUMERIC
+    nodeid.identifier.numeric = identifier
     return nodeid
 end
 
-function UA_NODEID_NUMERIC(nsIndex::Integer, identifier::Integer)
-    return UA_NodeId_new(nsIndex, identifier)
-end
+"""
+```
+UA_NODEID_STRING_ALLOC(nsIndex::Integer, identifier::AbstractString)::Ptr{UA_NodeId}
+UA_NODEID_STRING_ALLOC(nsIndex::Integer, identifier::Ptr{UA_String})::Ptr{UA_NodeId}
+```
 
-#string
-function UA_NodeId_new(nsIndex::Integer, identifier::AbstractString)
+creates a `UA_NodeId` object with namespace index `nsIndex` and string identifier `identifier` (which can be a string or UA_String).
+Memory is allocated by C and needs to be cleaned up using `UA_NodeId_delete(x::Ptr{UA_NodeId})` after the object is not used anymore.
+"""
+function UA_NODEID_STRING_ALLOC(nsIndex::Integer, identifier::Ptr{UA_String})
     nodeid = UA_NodeId_new()
-    nodeid.namespaceIndex = UA_UInt16(nsIndex)
+    nodeid.namespaceIndex = nsIndex
     nodeid.identifierType = UA_NODEIDTYPE_STRING
-
-    identifier_tuple = open62541.anonymous_struct_tuple(UA_String_fromChars(identifier),
-        typeof(unsafe_load(nodeid.identifier)))
-    nodeid.identifier = identifier_tuple
+    UA_String_copy(identifier, nodeid.identifier.string)
     return nodeid
 end
 
 function UA_NODEID_STRING_ALLOC(nsIndex::Integer, identifier::AbstractString)
-    return UA_NodeId_new(nsIndex, identifier)
+    ua_s = UA_STRING(identifier)
+    nodeid = UA_NODEID_STRING_ALLOC(nsIndex, ua_s)
+    UA_String_delete(ua_s)
+    return nodeid
 end
 
-# String `s` must be kept valid using GC.@preserve as long as the return value is used. It is recommended to use UA_NODEID_STRING_ALLOC with a subsequent call to UA_NodeId_delete.
-function UA_NODEID_STRING_unsafe(nsIndex::Integer, s::AbstractString)
-    GC.@preserve s identifier_tuple=anonymous_struct_tuple(UA_STRING_unsafe(s),
-        fieldtype(UA_NodeId, :identifier))
-    return UA_NodeId(nsIndex, UA_NODEIDTYPE_STRING, identifier_tuple)
+"""
+```
+UA_NODEID_STRING(nsIndex::Integer, identifier::AbstractString)::Ptr{UA_NodeId}
+UA_NODEID_STRING(nsIndex::Integer, identifier::Ptr{UA_String})::Ptr{UA_NodeId}
+```
+
+creates a `UA_NodeId` object by with namespace index `nsIndex` and string identifier `identifier` (which can be a string or UA_String).
+Memory is allocated by C and needs to be cleaned up using `UA_NodeId_delete(x::Ptr{UA_NodeId})` after the object is not used anymore.
+"""
+function UA_NODEID_STRING(nsIndex::Integer,
+        identifier::Union{AbstractString, Ptr{UA_String}})
+    return UA_NODEID_STRING_ALLOC(nsIndex, identifier)
 end
 
-function UA_NODEID_GUID(nsIndex::Integer, guid::UA_Guid)
-    identifier_tuple = anonymous_struct_tuple(guid, fieldtype(UA_NodeId, :identifier))
-    return UA_NodeId(nsIndex, UA_NODEIDTYPE_GUID, identifier_tuple)
+"""
+```
+UA_NODEID_BYTESTRING_ALLOC(nsIndex::Integer, identifier::AbstractString)::Ptr{UA_NodeId}
+UA_NODEID_BYTESTRING_ALLOC(nsIndex::Integer, identifier::Ptr{UA_ByteString})::Ptr{UA_NodeId}
+```
+
+creates a `UA_NodeId` object with namespace index `nsIndex` and bytestring identifier `identifier` (which can be a string or UA_ByteString).
+Memory is allocated by C and needs to be cleaned up using `UA_NodeId_delete(x::Ptr{UA_NodeId})` after the object is not used anymore.
+"""
+function UA_NODEID_BYTESTRING_ALLOC(nsIndex::Integer, identifier::Ptr{UA_String})
+    nodeid = UA_NodeId_new()
+    nodeid.namespaceIndex = nsIndex
+    nodeid.identifierType = UA_NODEIDTYPE_BYTESTRING
+    UA_String_copy(identifier, nodeid.identifier.byteString)
+    return nodeid
 end
 
-#TODO: since UA_NodeId_delete(Ptr{UA_NodeId}) is defined, do I still need this function?
-function UA_NodeId_delete(n::UA_NodeId)
-    if n.identifier == UA_NODEIDTYPE_STRING
-        UA_String_delete(n.identifier.string)
-    end
-    return nothing
+function UA_NODEID_BYTESTRING_ALLOC(nsIndex::Integer, identifier::AbstractString)
+    ua_s = UA_STRING(identifier)
+    nodeid = UA_NODEID_BYTESTRING_ALLOC(nsIndex, ua_s)
+    UA_String_delete(ua_s)
+    return nodeid
 end
 
-function UA_NodeId_equal(n1::Union{Ref{UA_NodeId}, Ptr{UA_NodeId}},
-        n2::Union{Ref{UA_NodeId}, Ptr{UA_NodeId}})
+"""
+```
+UA_NODEID_BYTESTRING(nsIndex::Integer, identifier::AbstractString)::Ptr{UA_NodeId}
+UA_NODEID_BYTESTRING(nsIndex::Integer, identifier::Ptr{UA_ByteString})::Ptr{UA_NodeId}
+```
+
+creates a `UA_NodeId` object with namespace index `nsIndex` and bytestring identifier `identifier` (which can be a string or UA_ByteString).
+Memory is allocated by C and needs to be cleaned up using `UA_NodeId_delete(x::Ptr{UA_NodeId})` after the object is not used anymore.
+"""
+function UA_NODEID_BYTESTRING(nsIndex::Integer,
+        identifier::Union{AbstractString, Ptr{UA_String}})
+    return UA_NODEID_BYTESTRING_ALLOC(nsIndex, identifier)
+end
+
+"""
+```
+UA_NODEID_GUID(nsIndex::Integer, identifier::AbstractString)::Ptr{UA_NodeId}
+UA_NODEID_GUID(nsIndex::Integer, identifier::Ptr{UA_Guid})::Ptr{UA_NodeId}
+```
+
+creates a `UA_NodeId` object by with namespace index `nsIndex` and an identifier `identifier` based on a globally unique id (`UA_Guid`)
+that can be supplied as a string (which will be parsed) or as a valid `Ptr{UA_Guid}`.
+Memory is allocated by C and needs to be cleaned up using `UA_NodeId_delete(x::Ptr{UA_NodeId})` after the object is not used anymore.
+"""
+function UA_NODEID_GUID(nsIndex, guid::Ptr{UA_Guid})
+    nodeid = UA_NodeId_new()
+    nodeid.namespaceIndex = nsIndex
+    nodeid.identifierType = UA_NODEIDTYPE_GUID
+    nodeid.identifier.guid = guid
+    return nodeid
+end
+
+function UA_NODEID_GUID(nsIndex, guid::AbstractString)
+    guid = UA_GUID(guid)
+    nodeid = UA_NODEID_GUID(nsIndex, guid)
+    UA_Guid_delete(guid)
+    return nodeid
+end
+
+"""
+```
+UA_NodeId_equal(n1::Ptr{UA_NodeId}, n2::Ptr{UA_NodeId})::Bool
+```
+
+returns `true` if `n1` and `n2` are UA_NodeIds with identical content.
+"""
+function UA_NodeId_equal(n1, n2)
     UA_NodeId_order(n1, n2) == UA_ORDER_EQ
 end
 
-function UA_NodeId_equal(n1, n2)
-    UA_NodeId_equal(wrap_ref(n1), wrap_ref(n2))
-end
-
 ## ExpandedNodeId
-# String `ns_uri` is copied to newly allocated memory that needs to be freed.
-function UA_EXPANDEDNODEID_NUMERIC_ALLOC(nsIndex::Integer,
-        identifier::Integer,
-        ns_uri::AbstractString,
-        server_ind::Integer)
+function UA_EXPANDEDNODEID(s::AbstractString)
+    ua_s = UA_STRING(s)
+    nodeid = UA_EXPANDEDNODEID(ua_s)
+    UA_String_delete(ua_s)
+    return nodeid
+end
+
+function UA_EXPANDEDNODEID(s::Ptr{UA_String})
+    id = UA_ExpandedNodeId_new()
+    retval = UA_ExpandedNodeId_parse(id, s)
+    retval != UA_STATUSCODE_GOOD &&
+        error("Parsing of ExpandedNodeId \"$(s)\" failed with statuscode \"$(UA_StatusCode_name_print(retval))\".")
+    return id
+end
+
+function UA_EXPANDEDNODEID_NUMERIC(nsIndex::Integer, identifier::Integer)
+    id = UA_ExpandedNodeId_new()
     nodeid = UA_NODEID_NUMERIC(nsIndex, identifier)
-    ua_ns_uri = UA_STRING_ALLOC(ns_uri)
-    return UA_ExpandedNodeId(nodeid, ua_ns_uri, server_ind)
+    id.nodeId = nodeid
+    UA_NodeId_delete(nodeid)
+    return id
 end
 
-# Strings `s` and `ns_uri` are copied to newly allocated memory that needs to be freed.
 function UA_EXPANDEDNODEID_STRING_ALLOC(nsIndex::Integer,
-        s::AbstractString,
-        ns_uri::AbstractString,
-        server_ind::Integer)
-    nodeid = UA_NODEID_STRING_ALLOC(nsIndex, s)
-    ua_ns_uri = UA_STRING_ALLOC(ns_uri)
-    return UA_ExpandedNodeId(nodeid, ua_ns_uri, server_ind)
+        identifier::Union{AbstractString, Ptr{UA_String}})
+    id = UA_ExpandedNodeId_new()
+    nodeid_src = UA_NODEID_STRING_ALLOC(nsIndex, identifier)
+    nodeid_dst = id.nodeId
+    UA_NodeId_copy(nodeid_src, nodeid_dst)
+    UA_NodeId_delete(nodeid_src)
+    return id
 end
 
-# String `ns_uri` is copied to newly allocated memory that needs to be freed.
-function UA_EXPANDEDNODEID_GUID_ALLOC(nsIndex::Integer,
-        guid::UA_Guid,
-        ns_uri::AbstractString,
-        server_ind::Integer)
-    nodeid = UA_NODEID_GUID(nsIndex, guid)
-    ua_ns_uri = UA_STRING_ALLOC(ns_uri)
-    return UA_ExpandedNodeId(nodeid, ua_ns_uri, server_ind)
+function UA_EXPANDEDNODEID_STRING(nsIndex::Integer,
+        identifier::Union{AbstractString, Ptr{UA_String}})
+    return UA_EXPANDEDNODEID_STRING_ALLOC(nsIndex, identifier)
 end
 
-function UA_ExpandedNodeId_equal(n1::Ref{UA_ExpandedNodeId}, n2::Ref{UA_ExpandedNodeId})
+function UA_EXPANDEDNODEID_BYTESTRING_ALLOC(nsIndex::Integer,
+        identifier::Union{AbstractString, Ptr{UA_String}})
+    id = UA_ExpandedNodeId_new()
+    nodeid_src = UA_NODEID_BYTESTRING_ALLOC(nsIndex, identifier)
+    nodeid_dst = id.nodeId
+    UA_NodeId_copy(nodeid_src, nodeid_dst)
+    UA_NodeId_delete(nodeid_src)
+    return id
+end
+
+function UA_EXPANDEDNODEID_BYTESTRING(nsIndex::Integer,
+        identifier::Union{AbstractString, Ptr{UA_String}})
+    return UA_EXPANDEDNODEID_BYTESTRING_ALLOC(nsIndex, identifier)
+end
+
+function UA_EXPANDEDNODEID_NODEID(nodeId::Ptr{UA_NodeId})
+    id = UA_ExpandedNodeId_new()
+    nodeid_dst = id.nodeId
+    UA_NodeId_copy(nodeId, nodeid_dst)
+    return id
+end
+
+function UA_EXPANDEDNODEID_STRING_GUID(nsIndex::Integer,
+        guid::Union{Ptr{UA_Guid}, AbstractString})
+    id = UA_ExpandedNodeId_new()
+    nodeid_src = UA_NODEID_GUID(nsIndex, guid)
+    nodeid_dst = id.nodeId
+    UA_NodeId_copy(nodeid_src, nodeid_dst)
+    UA_NodeId_delete(nodeid_src)
+    return id
+end
+
+#NOTE: not part of official open62541 interface, but convenient to define
+function UA_EXPANDEDNODEID_NUMERIC(identifier::Integer,
+        ns_uri::AbstractString,
+        server_ind::Integer)
+    id = UA_EXPANDEDNODEID_NUMERIC(0, identifier)
+    ua_ns_uri = UA_STRING_ALLOC(ns_uri)
+    id.serverIndex = server_ind
+    uri_dst = id.namespaceUri
+    UA_String_copy(ua_ns_uri, uri_dst)
+    UA_String_delete(ua_ns_uri)
+    return id
+end
+
+#NOTE: not part of official open62541 interface, but convenient to define
+function UA_EXPANDEDNODEID_STRING_ALLOC(identifier::Union{Ptr{UA_String}, AbstractString},
+        ns_uri::AbstractString,
+        server_ind::Integer)
+    id = UA_EXPANDEDNODEID_STRING_ALLOC(0, identifier)
+    ua_ns_uri = UA_STRING_ALLOC(ns_uri)
+    id.serverIndex = server_ind
+    uri_dst = id.namespaceUri
+    UA_String_copy(ua_ns_uri, uri_dst)
+    UA_String_delete(ua_ns_uri)
+    return id
+end
+
+#NOTE: not part of official open62541 interface, but convenient to define
+function UA_EXPANDEDNODEID_STRING_GUID(guid::Union{Ptr{UA_Guid}, AbstractString},
+        ns_uri::AbstractString,
+        server_ind::Integer)
+    id = UA_EXPANDEDNODEID_STRING_GUID(0, guid)
+    ua_ns_uri = UA_STRING_ALLOC(ns_uri)
+    id.serverIndex = server_ind
+    uri_dst = id.namespaceUri
+    UA_String_copy(ua_ns_uri, uri_dst)
+    UA_String_delete(ua_ns_uri)
+    return id
+end
+
+#NOTE: not part of official open62541 interface, but convenient to define
+function UA_EXPANDEDNODEID_BYTESTRING_ALLOC(identifier::Union{
+            Ptr{UA_String},
+            AbstractString,
+        },
+        ns_uri::AbstractString,
+        server_ind::Integer)
+    id = UA_EXPANDEDNODEID_BYTESTRING_ALLOC(0, identifier)
+    ua_ns_uri = UA_STRING_ALLOC(ns_uri)
+    id.serverIndex = server_ind
+    uri_dst = id.namespaceUri
+    UA_String_copy(ua_ns_uri, uri_dst)
+    UA_String_delete(ua_ns_uri)
+    return id
+end
+
+#NOTE: not part of official open62541 interface, but convenient to define
+function UA_EXPANDEDNODEID_NODEID(nodeid::Ptr{UA_NodeId},
+        ns_uri::AbstractString,
+        server_ind::Integer)
+    id = UA_EXPANDEDNODEID_NODEID(nodeid)
+    ua_ns_uri = UA_STRING_ALLOC(ns_uri)
+    id.serverIndex = server_ind
+    uri_dst = id.namespaceUri
+    UA_String_copy(ua_ns_uri, uri_dst)
+    UA_String_delete(ua_ns_uri)
+    return id
+end
+
+function UA_ExpandedNodeId_equal(n1, n2)
     return UA_ExpandedNodeId_order(n1, n2) == UA_ORDER_EQ
 end
 
-function UA_ExpandedNodeId_delete(n::UA_ExpandedNodeId)
-    UA_NodeId_delete(n.nodeId)
-    UA_String_delete(n.namespaceUri)
-    return nothing
-end
-
 ## QualifiedName
-UA_QualifiedName_isNull(q::UA_QualifiedName) = (q.namespaceIndex == 0 && q.name.length == 0)
-UA_QualifiedName_isNull(q::Ref{UA_QualifiedName}) = UA_QualifiedName_isNull(q[])
 
-# String `s` must be kept valid using GC.@preserve as long as the return value is used. It is recommended to use UA_QUALIFIEDNAME_ALLOC with a subsequent call to UA_QualifiedName_delete.
-function UA_QUALIFIEDNAME(nsIndex::Integer, s::AbstractString)
-    GC.@preserve s return UA_QualifiedName(nsIndex, UA_STRING_unsafe(s))
-end
-
-# String `s` is copied to newly allocated memory that needs to be freed.
 function UA_QUALIFIEDNAME_ALLOC(nsIndex::Integer, s::AbstractString)
-    return UA_QualifiedName(nsIndex, UA_String_fromChars(s))
+    ua_s = UA_STRING(s)
+    qn = UA_QUALIFIEDNAME_ALLOC(nsIndex, ua_s)
+    UA_String_delete(ua_s)
+    return qn
 end
 
-UA_QualifiedName_delete(q::UA_QualifiedName) = UA_String_delete(q.name)
+function UA_QUALIFIEDNAME_ALLOC(nsIndex::Integer, s::Ptr{UA_String})
+    qn = UA_QualifiedName_new()
+    qn.namespaceIndex = nsIndex
+    UA_String_copy(s, qn.name)
+    return qn
+end
+
+function UA_QUALIFIEDNAME(nsIndex::Integer, s::Union{AbstractString, Ptr{UA_String}})
+    UA_QUALIFIEDNAME_ALLOC(nsIndex, s)
+end
+
+function UA_QualifiedName_isNull(q::Ptr{UA_QualifiedName})
+    (unsafe_load(q.namespaceIndex) == 0 && unsafe_load(q.name.length) == 0)
+end
 
 ## LocalizedText
-# Strings `locale` and `text` must be kept valid using GC.@preserve as long as the return value is used. It is recommended to use UA_QUALIFIEDNAME_ALLOC with a subsequent call to UA_LocalizedText_delete.
-function UA_LOCALIZEDTEXT_unsafe(locale::AbstractString, text::AbstractString)
-    GC.@preserve locale text begin
-        return UA_LocalizedText(UA_STRING_unsafe(locale), UA_STRING_unsafe(text))
-    end
-end
-
-# Strings `locale` and `text` are copied to newly allocated memory that needs to be freed
 function UA_LOCALIZEDTEXT_ALLOC(locale::AbstractString, text::AbstractString)
-    return UA_LocalizedText(UA_STRING_ALLOC(locale), UA_STRING_ALLOC(text))
+    text_uas = UA_STRING(text)
+    lt = UA_LOCALIZEDTEXT_ALLOC(locale, text_uas)
+    UA_String_delete(text_uas)
+    return lt
 end
 
-UA_LocalizedText_delete(l::UA_LocalizedText) = UA_String_delete(l.text)
+function UA_LOCALIZEDTEXT_ALLOC(locale::Ptr{UA_String}, text::AbstractString)
+    text_uas = UA_STRING(text)
+    lt = UA_LOCALIZEDTEXT_ALLOC(locale, text_uas)
+    UA_String_delete(text_uas)
+    return lt
+end
+
+function UA_LOCALIZEDTEXT_ALLOC(locale::AbstractString, text::Ptr{UA_String})
+    locale_uas = UA_STRING(locale)
+    lt = UA_LOCALIZEDTEXT_ALLOC(locale_uas, text)
+    UA_String_delete(locale_uas)
+    return lt
+end
+
+function UA_LOCALIZEDTEXT_ALLOC(locale::Ptr{UA_String}, text::Ptr{UA_String})
+    lt = UA_LocalizedText_new()
+    UA_String_copy(locale, lt.locale)
+    UA_String_copy(text, lt.text)
+    return lt
+end
+
+function UA_LOCALIZEDTEXT(locale::Union{AbstractString, Ptr{UA_String}},
+        text::Union{AbstractString, Ptr{UA_String}})
+    return UA_LOCALIZEDTEXT_ALLOC(locale, text)
+end
+
+function UA_LocalizedText_equal(lt1, lt2)
+    return UA_String_equal(lt1.locale, lt2.locale) && UA_String_equal(lt1.text, lt2.text)
+end
 
 ## NumericRange
-function UA_NUMERICRANGE(s::AbstractArray)
+#TODO: This leaks memory.
+function UA_NUMERICRANGE(s::AbstractString)
     nr = Ref{UA_NumericRange}()
-    retval = GC.@preserve s UA_NumericRange_parse(nr, UA_STRING_unsafe(s))
+    ua_s = UA_STRING(s)
+    retval = GC.@preserve s UA_NumericRange_parse(nr, ua_s)
+    UA_String_delete(ua_s)
     retval != UA_STATUSCODE_GOOD &&
         error("Parsing of NumericRange \"$(s)\" failed with statuscode \"$(UA_StatusCode_name_print(retval))\".")
     return nr[]
@@ -429,10 +778,13 @@ end
 function Base.unsafe_wrap(v::UA_Variant)
     type = juliadatatype(v.type)
     data = reinterpret(Ptr{type}, v.data)
-    UA_Variant_isScalar(v) && return GC.@preserve data unsafe_load(data)
-    values = GC.@preserve data unsafe_wrap(Array, data, unsafe_size(v))
-    values_row_major = reshape(values, unsafe_size(v))
-    return permutedims(values_row_major, reverse(1:(Int64(v.arrayDimensionsSize)))) # To column major format; TODO: Which permutation is right? TODO: can make allocation free using PermutedDimsArray?
+    if UA_Variant_isScalar(v)
+        return GC.@preserve data unsafe_load(data)
+    else
+        values = GC.@preserve data unsafe_wrap(Array, data, unsafe_size(v))
+        values_row_major = reshape(values, unsafe_size(v))
+        return permutedims(values_row_major, reverse(1:(Int64(v.arrayDimensionsSize)))) # To column major format; TODO: Which permutation is right? TODO: can make allocation free using PermutedDimsArray?
+    end
 end
 
 Base.unsafe_wrap(p::Ref{UA_Variant}) = unsafe_wrap(unsafe_load(p))
@@ -455,4 +807,41 @@ end
 
 function UA_Variant_hasArrayType(p::Ref{UA_Variant}, type::Ref{UA_DataType})
     return UA_Variant_hasArrayType(unsafe_load(p), type)
+end
+
+## Subscriptions
+function UA_CreateSubscriptionRequest_default()
+    request = UA_CreateSubscriptionRequest_new()
+    UA_CreateSubscriptionRequest_init(request)
+    request.requestedPublishingInterval = 500.0
+    request.requestedLifetimeCount = 10000
+    request.requestedMaxKeepAliveCount = 10
+    request.maxNotificationsPerPublish = 0
+    request.publishingEnabled = true
+    request.priority = 0
+    return request
+end
+
+function UA_MonitoredItemCreateRequest_default(nodeId)
+    request = UA_MonitoredItemCreateRequest_new()
+    UA_MonitoredItemCreateRequest_init(request)
+    request.itemToMonitor.nodeId = nodeId
+    request.itemToMonitor.attributeId = UA_ATTRIBUTEID_VALUE
+    request.monitoringMode = UA_MONITORINGMODE_REPORTING
+    request.requestedParameters.samplingInterval = 250
+    request.requestedParameters.discardOldest = true
+    request.requestedParameters.queueSize = 1
+    return request
+end
+
+function UA_constantTimeEqual(ptr1, ptr2, len)
+    a = reinterpret(Ptr{UInt8}, ptr1)
+    b = reinterpret(Ptr{UInt8}, ptr2)
+    c = UInt8(0)
+    for i in 1:len
+        x = unsafe_load(a, i)
+        y = unsafe_load(b, i)
+        c = c | (x ⊻ y)
+    end
+    return (c == 0)
 end

@@ -14,12 +14,11 @@ retval0 = UA_ServerConfig_setDefault(UA_Server_getConfig(server))
 @test retval0 == UA_STATUSCODE_GOOD
 
 #add a variable node
-accesslevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE
+accesslevel = UA_ACCESSLEVEL(read = true, write = true)
 input = rand(Float64)
-attr = UA_generate_variable_attributes(input,
-    "scalar variable",
-    "this is a scalar variable",
-    accesslevel)
+attr = UA_VariableAttributes_generate(value = input, displayname = "scalar variable",
+    description = "this is a scalar variable",
+    accesslevel = accesslevel)
 variablenodeid = UA_NODEID_STRING_ALLOC(1, "scalar variable")
 parentnodeid = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER)
 parentreferencenodeid = UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES)
@@ -36,17 +35,16 @@ retval = UA_Server_addVariableNode(server, variablenodeid, parentnodeid,
 #add a variabletype node
 input = zeros(2)
 variabletypenodeid = UA_NodeId_new()
-accesslevel = UA_ACCESSLEVELMASK_READ
+accesslevel = UA_ACCESSLEVEL(read = true)
 displayname = "2D point type"
 description = "This is a 2D point type."
-attr = UA_generate_variable_attributes(input,
-    displayname,
-    description,
-    accesslevel)
-retval = UA_Server_addVariableTypeNode(server, UA_NODEID_NULL,
+attr = UA_VariableTypeAttributes_generate(value = input,
+    displayname = displayname,
+    description = description)
+retval = UA_Server_addVariableTypeNode(server, UA_NodeId_new(),
     UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE),
     UA_NODEID_NUMERIC(0, UA_NS0ID_HASSUBTYPE),
-    UA_QUALIFIEDNAME(1, "2DPoint Type"), UA_NODEID_NULL,
+    UA_QUALIFIEDNAME_ALLOC(1, "2DPoint Type"), UA_NodeId_new(),
     attr, C_NULL, variabletypenodeid)
 #test whether adding node to the server worked    
 @test retval == UA_STATUSCODE_GOOD
@@ -55,7 +53,7 @@ retval = UA_Server_addVariableTypeNode(server, UA_NODEID_NULL,
 nodes = (variablenodeid, variabletypenodeid)
 
 for node in nodes
-    nodeclass = UA_Server_readNodeClass(server, node)
+    nodeclass = unsafe_load(UA_Server_readNodeClass(server, node))
     if nodeclass == UA_NODECLASS_VARIABLE
         attributeset = UA_VariableAttributes
     elseif nodeclass == UA_NODECLASS_VARIABLETYPE
@@ -63,16 +61,12 @@ for node in nodes
     end #TODO: add more node types once implemented
     for att in open62541.attributes_UA_Server_read
         fun_name = Symbol(att[1])
-        attr_name = Symbol(att[2])
         attr_type = Symbol(att[3])
         if in(Symbol(lowercasefirst(att[2])), fieldnames(attributeset)) ||
            in(Symbol(lowercasefirst(att[2])), fieldnames(UA_NodeHead))
-            @test isa(eval(fun_name)(server, node), eval(attr_type))
-            @test isa(eval(fun_name)(server, unsafe_load(node)), eval(attr_type))
+            @test isa(eval(fun_name)(server, node), Ptr{eval(attr_type)})
         else
             @test_throws open62541.AttributeReadWriteError eval(fun_name)(server, node)
-            @test_throws open62541.AttributeReadWriteError eval(fun_name)(server,
-                unsafe_load(node))
         end
     end
 end

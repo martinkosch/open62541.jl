@@ -11,6 +11,7 @@ open62541_jll = "de311183-6042-582f-9ed9-05a52085bec4"
 
 [compat]
 Aqua = "0.8"
+Base64 = "1.6"
 CEnum = "0.4, 0.5"
 Dates = "1.6"
 Distributed = "1.6"
@@ -23,10 +24,11 @@ open62541_jll = "=1.3.9"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 SafeTestsets = "1bc83da4-3b8d-516f-aca4-4fe02f6d838f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Aqua", "Distributed", "Pkg", "SafeTestsets", "Test"]
+test = ["Aqua", "Base64", "Distributed", "Pkg", "SafeTestsets", "Test"]

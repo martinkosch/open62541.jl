@@ -11,10 +11,7 @@ end
 Distributed.@spawnat Distributed.workers()[end] begin
     server = UA_Server_new()
     retval1 = UA_ServerConfig_setMinimalCustomBuffer(UA_Server_getConfig(server),
-        4842,
-        C_NULL,
-        0,
-        0)
+        4842, C_NULL, 0, 0)
     @test retval1 == UA_STATUSCODE_GOOD
     @test isa(server, Ptr{UA_Server})
     UA_Server_run(server, Ref(true))

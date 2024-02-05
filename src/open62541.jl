@@ -7,6 +7,7 @@ using CEnum
 
 using Dates
 using OffsetArrays
+
 const UA_INT64_MAX = typemax(Int64)
 const UA_INT64_MIN = typemin(Int64)
 const UA_UINT64_MAX = typemax(UInt64)
@@ -180,7 +181,7 @@ Generic Type Handling ---------------------
 
 All information about a (builtin/structured) data type is stored in a `[`UA_DataType`](@ref)`. The array ``UA_TYPES`` contains the description of all standard-defined types. This type description is used for the following generic operations that work on all types:
 
-- ``void T\\_init(T *ptr)``: Initialize the data type. This is synonymous with zeroing out the memory, i.e. ``memset(ptr, 0, sizeof(T))``. - ``T* T\\_new()``: Allocate and return the memory for the data type. The value is already initialized. - ``[`UA_StatusCode`](@ref) T\\_copy(const T *src, T *dst)``: Copy the content of the data type. Returns `[`UA_STATUSCODE_GOOD`](@ref)` or `[`UA_STATUSCODE_BADOUTOFMEMORY`](@ref)`. - ``void T\\_clear(T *ptr)``: Delete the dynamically allocated content of the data type and perform a ``T_init`` to reset the type. - ``void T\\_delete(T *ptr)``: Delete the content of the data type and the memory for the data type itself.
+  - ``void T\\_init(T *ptr)``: Initialize the data type. This is synonymous with zeroing out the memory, i.e. ``memset(ptr, 0, sizeof(T))``. - ``T* T\\_new()``: Allocate and return the memory for the data type. The value is already initialized. - ``[`UA_StatusCode`](@ref) T\\_copy(const T *src, T *dst)``: Copy the content of the data type. Returns `[`UA_STATUSCODE_GOOD`](@ref)` or `[`UA_STATUSCODE_BADOUTOFMEMORY`](@ref)`. - ``void T\\_clear(T *ptr)``: Delete the dynamically allocated content of the data type and perform a ``T_init`` to reset the type. - ``void T\\_delete(T *ptr)``: Delete the content of the data type and the memory for the data type itself.
 
 Specializations, such as ``[`UA_Int32_new`](@ref)()`` are derived from the generic type operations as static inline functions.
 """
@@ -253,7 +254,7 @@ Variants may contain a scalar value or an array. For details on the handling of 
 
 To differentiate between scalar / array variants, the following definition is used. `[`UA_Variant_isScalar`](@ref)` provides simplified access to these checks.
 
-- ``arrayLength == 0 && data == NULL``: undefined array of length -1 - ``arrayLength == 0 && data == [`UA_EMPTY_ARRAY_SENTINEL`](@ref)``: array of length 0 - ``arrayLength == 0 && data > [`UA_EMPTY_ARRAY_SENTINEL`](@ref)``: scalar value - ``arrayLength > 0``: array of the given length
+  - ``arrayLength == 0 && data == NULL``: undefined array of length -1 - ``arrayLength == 0 && data == [`UA_EMPTY_ARRAY_SENTINEL`](@ref)``: array of length 0 - ``arrayLength == 0 && data > [`UA_EMPTY_ARRAY_SENTINEL`](@ref)``: scalar value - ``arrayLength > 0``: array of the given length
 
 Variants can also be *empty*. Then, the pointer to the type description is ``NULL``.
 """
@@ -448,7 +449,7 @@ Value Rank ~~~~~~~~~~
 
 This attribute indicates whether the value attribute of the variable is an array and how many dimensions the array has. It may have the following values:
 
-- ``n >= 1``: the value is an array with the specified number of dimensions - ``n = 0``: the value is an array with one or more dimensions - ``n = -1``: the value is a scalar - ``n = -2``: the value can be a scalar or an array with any number of dimensions - ``n = -3``: the value can be a scalar or a one dimensional array
+  - ``n >= 1``: the value is an array with the specified number of dimensions - ``n = 0``: the value is an array with one or more dimensions - ``n = -1``: the value is a scalar - ``n = -2``: the value can be a scalar or an array with any number of dimensions - ``n = -3``: the value can be a scalar or a one dimensional array
 
 Consistency between the value rank attribute in the variable and its :ref:`variabletypenode` is ensured.
 
@@ -456,7 +457,7 @@ Array Dimensions ~~~~~~~~~~~~~~~~
 
 If the value rank permits the value to be a (multi-dimensional) array, the exact length in each dimensions can be further constrained with this attribute.
 
-- For positive lengths, the variable value is guaranteed to be of the same length in this dimension. - The dimension length zero is a wildcard and the actual value may have any length in this dimension.
+  - For positive lengths, the variable value is guaranteed to be of the same length in this dimension. - The dimension length zero is a wildcard and the actual value may have any length in this dimension.
 
 Consistency between the array dimensions attribute in the variable and its :ref:`variabletypenode` is ensured.
 """
@@ -508,7 +509,7 @@ StatusCode ^^^^^^^^^^ A numeric identifier for an error or condition that is ass
 
 Each StatusCode has one of three "severity" bit-flags: Good, Uncertain, Bad. An additional reason is indicated by the SubCode bitfield.
 
-- A StatusCode with severity Good means that the value is of good quality. - A StatusCode with severity Uncertain means that the quality of the value is uncertain for reasons indicated by the SubCode. - A StatusCode with severity Bad means that the value is not usable for reasons indicated by the SubCode.
+  - A StatusCode with severity Good means that the value is of good quality. - A StatusCode with severity Uncertain means that the quality of the value is uncertain for reasons indicated by the SubCode. - A StatusCode with severity Bad means that the value is not usable for reasons indicated by the SubCode.
 """
 const UA_StatusCode = UInt32
 
@@ -718,7 +719,7 @@ Statistic counters ------------------
 
 The stack manages statistic counters for the following layers:
 
-- Network - Secure channel - Session
+  - Network - Secure channel - Session
 
 The session layer counters are matching the counters of the ServerDiagnosticsSummaryDataType that are defined in the OPC UA Part 5 specification. Counters of the other layers are not specified by OPC UA but are harmonized with the session layer counters if possible.
 """
@@ -1385,8 +1386,15 @@ function UA_UInt32_random()
     @ccall libopen62541.UA_UInt32_random()::UA_UInt32
 end
 
+#NOTE: Manually altered! Original code in comment below
+# function UA_Guid_random()
+#     @ccall libopen62541.UA_Guid_random()::UA_Guid
+# end
 function UA_Guid_random()
-    @ccall libopen62541.UA_Guid_random()::UA_Guid
+    guid_dst = UA_Guid_new()
+    guid_src = @ccall libopen62541.UA_Guid_random()::UA_Guid
+    UA_Guid_copy(guid_src, guid_dst)
+    return guid_dst
 end
 
 """
@@ -5614,6 +5622,32 @@ struct UA_AccessControl
     allowHistoryUpdateDeleteRawModified::Ptr{Cvoid}
 end
 
+function Base.getproperty(x::Ptr{UA_AccessControl}, f::Symbol)
+    f === :context && return Ptr{Ptr{Cvoid}}(x + 0)
+    f === :clear && return Ptr{Ptr{Cvoid}}(x + 8)
+    f === :userTokenPoliciesSize && return Ptr{Csize_t}(x + 16)
+    f === :userTokenPolicies && return Ptr{Ptr{UA_UserTokenPolicy}}(x + 24)
+    f === :activateSession && return Ptr{Ptr{Cvoid}}(x + 32)
+    f === :closeSession && return Ptr{Ptr{Cvoid}}(x + 40)
+    f === :getUserRightsMask && return Ptr{Ptr{Cvoid}}(x + 48)
+    f === :getUserAccessLevel && return Ptr{Ptr{Cvoid}}(x + 56)
+    f === :getUserExecutable && return Ptr{Ptr{Cvoid}}(x + 64)
+    f === :getUserExecutableOnObject && return Ptr{Ptr{Cvoid}}(x + 72)
+    f === :allowAddNode && return Ptr{Ptr{Cvoid}}(x + 80)
+    f === :allowAddReference && return Ptr{Ptr{Cvoid}}(x + 88)
+    f === :allowDeleteNode && return Ptr{Ptr{Cvoid}}(x + 96)
+    f === :allowDeleteReference && return Ptr{Ptr{Cvoid}}(x + 104)
+    f === :allowBrowseNode && return Ptr{Ptr{Cvoid}}(x + 112)
+    f === :allowTransferSubscription && return Ptr{Ptr{Cvoid}}(x + 120)
+    f === :allowHistoryUpdateUpdateData && return Ptr{Ptr{Cvoid}}(x + 128)
+    f === :allowHistoryUpdateDeleteRawModified && return Ptr{Ptr{Cvoid}}(x + 136)
+    return getfield(x, f)
+end
+
+function Base.setproperty!(x::Ptr{UA_AccessControl}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
 struct UA_Nodestore
     context::Ptr{Cvoid}
     clear::Ptr{Cvoid}
@@ -5638,7 +5672,7 @@ Information Modelling =====================
 
 Information modelling in OPC UA combines concepts from object-orientation and semantic modelling. At the core, an OPC UA information model is a graph made up of
 
-- Nodes: There are eight possible Node types (variable, object, method, ...) - References: Typed and directed relations between two nodes
+  - Nodes: There are eight possible Node types (variable, object, method, ...) - References: Typed and directed relations between two nodes
 
 Every node is identified by a unique (within the server) :ref:`nodeid`. Reference are triples of the form ``(source-nodeid, referencetype-nodeid, target-nodeid)``. An example reference between nodes is a ``hasTypeDefinition`` reference between a Variable and its VariableType. Some ReferenceTypes are *hierarchic* and must not form *directed loops*. See the section on :ref:`ReferenceTypes <referencetypenode>` for more details on possible references and their semantics.
 
@@ -5654,7 +5688,7 @@ In the hierarchy of ObjectTypes and VariableTypes, only the constructor of the (
 
 When a node is destroyed, the node-type destructor is called before the global destructor. So the overall node lifecycle is as follows:
 
-1. Global Constructor (set in the server config) 2. Node-Type Constructor (for VariableType or ObjectTypes) 3. (Usage-period of the Node) 4. Node-Type Destructor 5. Global Destructor
+ 1. Global Constructor (set in the server config) 2. Node-Type Constructor (for VariableType or ObjectTypes) 3. (Usage-period of the Node) 4. Node-Type Destructor 5. Global Destructor
 
 The constructor and destructor callbacks can be set to ``NULL`` and are not used in that case. If the node-type constructor fails, the global destructor will be called before removing the node. The destructors are assumed to never fail.
 
@@ -5709,22 +5743,22 @@ Server Configuration -------------------- The configuration structure is passed 
 
 Examples for configurations are provided in the ``/plugins`` folder. The usual usage is as follows:
 
-1. Create a server configuration with default settings as a starting point 2. Modifiy the configuration, e.g. by adding a server certificate 3. Instantiate a server with it 4. After shutdown of the server, clean up the configuration (free memory)
+ 1. Create a server configuration with default settings as a starting point 2. Modifiy the configuration, e.g. by adding a server certificate 3. Instantiate a server with it 4. After shutdown of the server, clean up the configuration (free memory)
 
 The :ref:`tutorials` provide a good starting point for this.
 
-| Field                     | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| :------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| buildInfo                 | Server Description ^^^^^^^^^^^^^^^^^^ The description must be internally consistent. The ApplicationUri set in the ApplicationDescription must match the URI set in the server certificate.                                                                                                                                                                                                                                                                                                                                                                                                 |
-| shutdownDelay             | Timeouts and Delays ^^^^^^^^^^^^^^^^^^^                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| verifyRequestTimestamp    | Rule Handling ^^^^^^^^^^^^^ Override the handling of standard-defined behavior. These settings are used to balance the following contradicting requirements:  - Strict conformance with the standard (for certification). - Ensure interoperability with old/non-conforming implementations encountered in the wild.  The defaults are set for compatibility with the largest number of OPC UA vendors (with log warnings activated). Cf. Postel's Law "be conservative in what you send, be liberal in what you accept".  See the section :ref:`rule-handling` for the possible settings.  |
-| customDataTypes           | Custom Data Types ^^^^^^^^^^^^^^^^^ The following is a linked list of arrays with custom data types. All data types that are accessible from here are automatically considered for the decoding of received messages. Custom data types are not cleaned up together with the configuration. So it is possible to allocate them on ROM.  See the section on :ref:`generic-types`. Examples for working with custom data types are provided in ``/examples/custom\\_datatype/``.                                                                                                              |
-| networkLayersSize         | Networking ^^^^^^^^^^                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| securityPoliciesSize      | Security and Encryption ^^^^^^^^^^^^^^^^^^^^^^^                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| accessControl             | See the section for :ref:`access-control handling<access-control>`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| nodestore                 | Nodes and Node Lifecycle ^^^^^^^^^^^^^^^^^^^^^^^^ See the section for :ref:`node lifecycle handling<node-lifecycle>`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| modellingRulesOnInstances | Copy the HasModellingRule reference in instances from the type definition in [`UA_Server_addObjectNode`](@ref) and [`UA_Server_addVariableNode`](@ref).  Part 3 - 6.4.4: [...] it is not required that newly created or referenced instances based on InstanceDeclarations have a ModellingRule, however, it is allowed that they have any ModellingRule independent of the ModellingRule of their InstanceDeclaration                                                                                                                                                                      |
-| maxSecureChannels         | Limits ^^^^^^                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Field                     | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+|:------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| buildInfo                 | Server Description ^^^^^^^^^^^^^^^^^^ The description must be internally consistent. The ApplicationUri set in the ApplicationDescription must match the URI set in the server certificate.                                                                                                                                                                                                                                                                                                                                                                                                |
+| shutdownDelay             | Timeouts and Delays ^^^^^^^^^^^^^^^^^^^                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| verifyRequestTimestamp    | Rule Handling ^^^^^^^^^^^^^ Override the handling of standard-defined behavior. These settings are used to balance the following contradicting requirements:  - Strict conformance with the standard (for certification). - Ensure interoperability with old/non-conforming implementations encountered in the wild.  The defaults are set for compatibility with the largest number of OPC UA vendors (with log warnings activated). Cf. Postel's Law "be conservative in what you send, be liberal in what you accept".  See the section :ref:`rule-handling` for the possible settings. |
+| customDataTypes           | Custom Data Types ^^^^^^^^^^^^^^^^^ The following is a linked list of arrays with custom data types. All data types that are accessible from here are automatically considered for the decoding of received messages. Custom data types are not cleaned up together with the configuration. So it is possible to allocate them on ROM.  See the section on :ref:`generic-types`. Examples for working with custom data types are provided in ``/examples/custom\\_datatype/``.                                                                                                             |
+| networkLayersSize         | Networking ^^^^^^^^^^                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| securityPoliciesSize      | Security and Encryption ^^^^^^^^^^^^^^^^^^^^^^^                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| accessControl             | See the section for :ref:`access-control handling<access-control>`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| nodestore                 | Nodes and Node Lifecycle ^^^^^^^^^^^^^^^^^^^^^^^^ See the section for :ref:`node lifecycle handling<node-lifecycle>`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| modellingRulesOnInstances | Copy the HasModellingRule reference in instances from the type definition in [`UA_Server_addObjectNode`](@ref) and [`UA_Server_addVariableNode`](@ref).  Part 3 - 6.4.4: [...] it is not required that newly created or referenced instances based on InstanceDeclarations have a ModellingRule, however, it is allowed that they have any ModellingRule independent of the ModellingRule of their InstanceDeclaration                                                                                                                                                                     |
+| maxSecureChannels         | Limits ^^^^^^                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 """
 struct UA_ServerConfig
     logger::UA_Logger
@@ -6452,7 +6486,7 @@ ReferenceTypeNode -----------------
 
 Each reference between two nodes is typed with a ReferenceType that gives meaning to the relation. The OPC UA standard defines a set of ReferenceTypes as a mandatory part of OPC UA information models.
 
-- Abstract ReferenceTypes cannot be used in actual references and are only used to structure the ReferenceTypes hierarchy - Symmetric references have the same meaning from the perspective of the source and target node
+  - Abstract ReferenceTypes cannot be used in actual references and are only used to structure the ReferenceTypes hierarchy - Symmetric references have the same meaning from the perspective of the source and target node
 
 The figure below shows the hierarchy of the standard ReferenceTypes (arrows indicate a ``hasSubType`` relation). Refer to Part 3 of the OPC UA specification for the full semantics of each ReferenceType.
 
@@ -6818,7 +6852,7 @@ Information Model Callbacks ---------------------------
 
 There are three places where a callback from an information model to user-defined code can happen.
 
-- Custom node constructors and destructors - Linking VariableNodes with an external data source - MethodNode callbacks
+  - Custom node constructors and destructors - Linking VariableNodes with an external data source - MethodNode callbacks
 """
 function UA_Server_setAdminSessionContext(server, context)
     @ccall libopen62541.UA_Server_setAdminSessionContext(server::Ptr{UA_Server},
@@ -7262,17 +7296,17 @@ The client configuration is used for setting connection parameters and additiona
 
 Examples for configurations are provided in the ``/plugins`` folder. The usual usage is as follows:
 
-1. Create a client configuration with default settings as a starting point 2. Modifiy the configuration, e.g. modifying the timeout 3. Instantiate a client with it 4. After shutdown of the client, clean up the configuration (free memory)
+ 1. Create a client configuration with default settings as a starting point 2. Modifiy the configuration, e.g. modifying the timeout 3. Instantiate a client with it 4. After shutdown of the client, clean up the configuration (free memory)
 
 The :ref:`tutorials` provide a good starting point for this.
 
-| Field                 | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| :-------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| userIdentityToken     | Connection configuration ~~~~~~~~~~~~~~~~~~~~~~~~  The following configuration elements reduce the "degrees of freedom" the client has when connecting to a server. If no connection can be made under these restrictions, then the connection will abort with an error message.                                                                                                                                                                                                                                                                                                                               |
-| endpoint              | If either endpoint or userTokenPolicy has been set (at least one non-zero byte in either structure), then the selected Endpoint and UserTokenPolicy overwrite the settings in the basic connection configuration. The userTokenPolicy array in the EndpointDescription is ignored. The selected userTokenPolicy is set in the dedicated configuration field.  If the advanced configuration is not set, the client will write to it the selected Endpoint and UserTokenPolicy during GetEndpoints.  The information in the advanced configuration is used during reconnect when the SecureChannel was broken.  |
-| applicationUri        | If the EndpointDescription has not been defined, the ApplicationURI constrains the servers considered in the FindServers service and the Endpoints considered in the GetEndpoints service.  If empty the applicationURI is not used to filter.                                                                                                                                                                                                                                                                                                                                                                 |
-| customDataTypes       | Custom Data Types ~~~~~~~~~~~~~~~~~ The following is a linked list of arrays with custom data types. All data types that are accessible from here are automatically considered for the decoding of received messages. Custom data types are not cleaned up together with the configuration. So it is possible to allocate them on ROM.  See the section on :ref:`generic-types`. Examples for working with custom data types are provided in ``/examples/custom\\_datatype/``.                                                                                                                                 |
-| secureChannelLifeTime | Advanced Client Configuration ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Field                 | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+|:--------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| userIdentityToken     | Connection configuration ~~~~~~~~~~~~~~~~~~~~~~~~  The following configuration elements reduce the "degrees of freedom" the client has when connecting to a server. If no connection can be made under these restrictions, then the connection will abort with an error message.                                                                                                                                                                                                                                                                                                                              |
+| endpoint              | If either endpoint or userTokenPolicy has been set (at least one non-zero byte in either structure), then the selected Endpoint and UserTokenPolicy overwrite the settings in the basic connection configuration. The userTokenPolicy array in the EndpointDescription is ignored. The selected userTokenPolicy is set in the dedicated configuration field.  If the advanced configuration is not set, the client will write to it the selected Endpoint and UserTokenPolicy during GetEndpoints.  The information in the advanced configuration is used during reconnect when the SecureChannel was broken. |
+| applicationUri        | If the EndpointDescription has not been defined, the ApplicationURI constrains the servers considered in the FindServers service and the Endpoints considered in the GetEndpoints service.  If empty the applicationURI is not used to filter.                                                                                                                                                                                                                                                                                                                                                                |
+| customDataTypes       | Custom Data Types ~~~~~~~~~~~~~~~~~ The following is a linked list of arrays with custom data types. All data types that are accessible from here are automatically considered for the decoding of received messages. Custom data types are not cleaned up together with the configuration. So it is possible to allocate them on ROM.  See the section on :ref:`generic-types`. Examples for working with custom data types are provided in ``/examples/custom\\_datatype/``.                                                                                                                                |
+| secureChannelLifeTime | Advanced Client Configuration ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 """
 struct UA_ClientConfig
     clientContext::Ptr{Cvoid}
@@ -20540,20 +20574,24 @@ const UA_REFERENCETYPESET_MAX = 128
 const INITIAL_MEMORY_STORE_SIZE = 1000
 
 const UA_STRING_NULL = UA_String(0, C_NULL)
-const UA_GUID_NULL = UA_Guid(0, 0, 0, Tuple(zeros(UA_Byte, 8)))
-const UA_NODEID_NULL = UA_NodeId(Tuple(zeros(UA_Byte, sizeof(UA_NodeId))))
+const UA_GUID_NULL = UA_Guid(0, 0, 0, tuple(zeros(UA_Byte, 8)...))
+const UA_NODEID_NULL = UA_NodeId(tuple(zeros(UA_Byte, 24)...))
 const UA_EXPANDEDNODEID_NULL = UA_ExpandedNodeId(UA_NODEID_NULL, UA_STRING_NULL, 0)
+
 include("generated_defs.jl")
 include("helper_functions.jl")
 include("types.jl")
-include("attribute_generation.jl")
+include("callbacks.jl")
 include("server.jl")
 include("client.jl")
+include("wrappers.jl")
+include("attribute_generation.jl")
 include("exceptions.jl")
 include("init.jl")
 
 # exports
-const PREFIXES = ["UA_", "__UA_"]
+const PREFIXES = ["UA_", "JUA_"]
+#const PREFIXES = ["JUA_"]
 for name in names(@__MODULE__; all = true), prefix in PREFIXES
     if startswith(string(name), prefix)
         @eval export $name

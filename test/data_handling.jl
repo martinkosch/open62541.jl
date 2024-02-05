@@ -23,7 +23,6 @@ UA_init(rr) # Generic method
 UA_ReadRequest_init(rr) # Shorthand for the previous line
 
 rr.requestHeader.timestamp = UA_DateTime_now() # Members of a structure
-
 rr.nodesToRead = UA_ReadValueId_new()
 rr.nodesToRead = UA_Array_new(5, UA_ReadValueId)
 rr.nodesToReadSize = 5 # Array size needs to be made known
@@ -31,7 +30,7 @@ rr.nodesToReadSize = 5 # Array size needs to be made known
 rr2 = UA_ReadRequest_new()
 UA_ReadRequest_copy(rr, rr2)
 @test unsafe_load(rr2.nodesToReadSize) == unsafe_load(rr.nodesToReadSize)
-UA_ReadRequest_clear(rr)
+UA_ReadRequest_delete(rr)
 UA_ReadRequest_delete(rr2)
 
 # NodeIds
@@ -39,15 +38,16 @@ ns = 1
 i = 1234
 id1 = UA_NODEID_NUMERIC(ns, i)
 @test unsafe_load(id1.namespaceIndex) == ns
-@test_broken id1.identifier == i # TODO: Not working due to type union, find workaround
+@test unsafe_load(id1.identifier.numeric) == i
 @test unsafe_load(id1.identifierType) == UA_NODEIDTYPE_NUMERIC
+UA_NodeId_delete(id1)
 
 id2 = UA_NODEID_STRING_ALLOC(1, "testid")
 @test !UA_NodeId_equal(id1, id2)
-UA_NodeId_delete(id2)
 
 id3 = UA_NodeId_new()
 UA_NodeId_copy(id2, id3)
+UA_NodeId_delete(id2)
 UA_NodeId_delete(id3)
 
 # Variants
@@ -63,7 +63,7 @@ UA_Variant_copy(v, v2)
 @test open62541.unsafe_size(v2) == open62541.unsafe_size(v)
 @test open62541.length(v2) == open62541.length(v)
 @test unsafe_wrap(v2) == unsafe_wrap(v)
-UA_Variant_clear(v2)
+UA_Variant_delete(v2)
 
 # Set an array value
 d = Float64[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
@@ -78,4 +78,4 @@ new_dims[2] = 3
 v3.arrayDimensions = new_dims
 v3.arrayDimensionsSize = 2
 @test all(isapprox.(permutedims(reshape(d, (3, 3)), reverse(1:2)), unsafe_wrap(v3)))
-UA_Variant_clear(v3)
+UA_Variant_delete(v3)

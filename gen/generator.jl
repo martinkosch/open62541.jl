@@ -89,7 +89,7 @@ options = load_options(joinpath(@__DIR__, "generator.toml"))
 
 # Extract all inlined functions and move them to codegen ignorelist; leads to out of memory
 # error on low memory machines. Implemented Post-Clang.jl removal using Regexp, which is lower
-# memory requirement
+# memory requirement (commented lines after build! command)
 append!(options["general"]["output_ignorelist"], extract_inlined_funcs(open62541_header))
 
 # Add compiler flags
@@ -103,10 +103,10 @@ ctx = create_context(open62541_header, args, options)
 # # Run generator
 build!(ctx)
 
-fn = joinpath(@__DIR__, "../src/open62541.jl")
-f = open(fn, "r")
-data = read(f, String)
-close(f)
+# fn = joinpath(@__DIR__, "../src/open62541.jl")
+# f = open(fn, "r")
+# data = read(f, String)
+# close(f)
 
 # #remove inlined functions
 # inlined_funcs = extract_inlined_funcs(open62541_header)
@@ -115,10 +115,10 @@ close(f)
 #     data = replace(data, r => "")
 # end
 
-fn = joinpath(@__DIR__, "../src/open62541.jl")
-f = open(fn, "w")
-write(f, data)
-close(f)
+# fn = joinpath(@__DIR__, "../src/open62541.jl")
+# f = open(fn, "w")
+# write(f, data)
+# close(f)
 
 @show "loading module"
 include("../src/open62541.jl")

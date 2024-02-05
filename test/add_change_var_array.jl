@@ -35,11 +35,11 @@ Distributed.@spawnat Distributed.workers()[end] begin
         for (array_size_ind, array_size) in enumerate(array_sizes)
             # Generate a UA_Server with standard config
             input = input_data[type_ind][array_size_ind]
-            accesslevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE
-            attr = UA_generate_variable_attributes(input,
-                varnode_ids[type_ind, array_size_ind],
-                "this is a $(string(array_size)) $(Symbol(type)) array variable",
-                accesslevel)
+            accesslevel = UA_ACCESSLEVEL(read = true, write = true)
+            attr = UA_VariableAttributes_generate(value = input,
+                displayname = varnode_ids[type_ind, array_size_ind],
+                description = "this is a $(string(array_size)) $(Symbol(type)) array variable",
+                accesslevel = accesslevel)
             varnodeid = UA_NODEID_STRING_ALLOC(1, varnode_ids[type_ind, array_size_ind])
             parentnodeid = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER)
             parentreferencenodeid = UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES)
