@@ -2,6 +2,7 @@ const UA_STRING_NULL = UA_String(0, C_NULL)
 const UA_GUID_NULL = UA_Guid(0, 0, 0, Tuple(zeros(UA_Byte, 8)))
 const UA_NODEID_NULL = UA_NodeId(Tuple(zeros(UA_Byte, 24)))
 const UA_EXPANDEDNODEID_NULL = UA_ExpandedNodeId(UA_NODEID_NULL, UA_STRING_NULL, 0)
+
 #Julia number types that are rare built directly into open62541
 #Does NOT include ComplexF32/64 - these have to be treated differently.
 const UA_NUMBER_TYPES = Union{Bool, Int8, Int16, Int32, Int64, UInt8, UInt16, 

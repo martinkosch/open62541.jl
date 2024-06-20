@@ -1,10 +1,9 @@
 #Takes what's written in file callbacks_base.jl and adds callback generators for 
-#the below AsynRead functions (cannot use @eval and interpolate value into the 
+#the below AsyncRead functions (cannot use @eval and interpolate value into the 
 #@cfunction macro at the same time - or at least I couldn't figure it out)
 
 #change dir
 cd(@__DIR__)
-
 fn = "callbacks_base.jl"
 f = open(fn, "r")
 orig_content = read(f, String)

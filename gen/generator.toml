@@ -113,8 +113,8 @@ output_ignorelist = [
                      "HANDLE",
                      "DWORD",
                      "WORD",
-                     "ULONG_PTR"
-                     "LONG"
+                     "ULONG_PTR",
+                     "LONG",
                      "PRTL_CRITICAL_SECTION_DEBUG"
                      ]
 
